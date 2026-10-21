@@ -1,0 +1,4 @@
+vk-api
+requests
+Pillow
+python-dotenv
