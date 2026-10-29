@@ -1,6 +1,5 @@
 import os
 DB_PATH = os.environ.get("DB_PATH", "/app/data/bot_database.db")
-import os
 
 try:
     from dotenv import load_dotenv
