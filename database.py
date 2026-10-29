@@ -2,6 +2,7 @@ import json
 import sqlite3
 from datetime import datetime
 from config import ADMIN_ID
+from config import DB_PATH
 
 class Database:
     def __init__(self, db_file=DB_PATH):
