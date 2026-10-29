@@ -1,0 +1,5 @@
+bot_database.db
+bot_database.db-wal
+bot_database.db-shm
+bot_database.db.b64broken
+backups/
