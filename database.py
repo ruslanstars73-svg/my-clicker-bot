@@ -4,7 +4,7 @@ from datetime import datetime
 from config import ADMIN_ID
 
 class Database:
-    def __init__(self, db_file="bot_database.db"):
+    def __init__(self, db_file=DB_PATH):
         self.db_file = db_file
         self.init_db()
 
