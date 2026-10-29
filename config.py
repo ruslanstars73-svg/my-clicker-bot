@@ -1,5 +1,5 @@
 import os
-DB_PATH = os.environ.get("DB_PATH", "/app/data/bot_database.db")
+DB_PATH = "/app/bot_database.db"
 
 try:
     from dotenv import load_dotenv
