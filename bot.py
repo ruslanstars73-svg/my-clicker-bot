@@ -2214,9 +2214,6 @@ class ClickerBot:
                 self.send_message(peer_id, f"❌ Ошибка SQL: {e}")
             return
 
-            except Exception as e:
-                self.send_message(peer_id, f"ошибка: {e}")
-            return        
         if text_lower == '/botbalance':
             self.handle_botbalance_command(user_id, peer_id); return
         if text_lower == '/payments':
