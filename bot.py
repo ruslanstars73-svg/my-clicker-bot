@@ -2136,41 +2136,40 @@ class ClickerBot:
             if not raw_query or raw_query.lower() == 'help':
                 help_text = (
                     "🛠 Шпаргалка SQL-запросов\n\n"
-                    "Чтобы выполнить, пиши: sql <запрос>\n\n"
+                    "Чтобы выполнить, пиши в формате:\n"
+                    "sql database('ТВОЙ_ЗАПРОС')\n"
+                    "или\n"
+                    "sql execute(\"ТВОЙ_ЗАПРОС\")\n\n"
+                    "Примеры:\n\n"
                     "👤 Изменить баланс:\n"
-                    "sql UPDATE users SET balance = 1000000000 WHERE user_id = 123\n"
-                    "sql UPDATE users SET balance = balance + 500000 WHERE user_id = 123\n"
-                    "(прибавить к текущему)\n\n"
+                    "sql database('UPDATE users SET balance = 1000000000 WHERE user_id = 123')\n"
+                    "sql execute(\"UPDATE users SET balance = balance + 500000 WHERE user_id = 123\")\n\n"
                     "🖱 Клики и Престиж:\n"
-                    "sql UPDATE users SET clicks = 10000 WHERE user_id = 123\n"
-                    "sql UPDATE users SET prestige_level = 5 WHERE user_id = 123\n\n"
+                    "sql database('UPDATE users SET clicks = 10000 WHERE user_id = 123')\n"
+                    "sql database('UPDATE users SET prestige_level = 5 WHERE user_id = 123')\n\n"
                     "🎃 Ивент (Тыквы):\n"
-                    "sql UPDATE users SET pumpkins = 1000 WHERE user_id = 123\n"
-                    "sql UPDATE users SET pumpkins = 0\n"
-                    "(сбросить всем)\n\n"
+                    "sql database('UPDATE users SET pumpkins = 1000 WHERE user_id = 123')\n"
+                    "sql database('UPDATE users SET pumpkins = 0')\n\n"
                     "🔄 Сброс кулдаунов:\n"
-                    "sql UPDATE users SET last_spin = NULL WHERE user_id = 123\n"
-                    "sql UPDATE users SET last_daily_bonus = NULL WHERE user_id = 123\n"
-                    "sql UPDATE users SET last_prestige = NULL WHERE user_id = 123\n\n"
+                    "sql database('UPDATE users SET last_spin = NULL WHERE user_id = 123')\n"
+                    "sql database('UPDATE users SET last_daily_bonus = NULL WHERE user_id = 123')\n\n"
                     "❓ Посмотреть инфу (SELECT):\n"
-                    "sql SELECT user_id, balance, clicks FROM users ORDER BY balance DESC LIMIT 10\n"
-                    "sql SELECT * FROM users WHERE user_id = 123\n"
-                    "sql SELECT COUNT(*) FROM users\n"
-                    "sql PRAGMA table_info(users)\n\n"
+                    "sql database('SELECT user_id, balance, clicks FROM users ORDER BY balance DESC LIMIT 10')\n"
+                    "sql database('SELECT * FROM users WHERE user_id = 123')\n\n"
                     "⚠️ Осторожно (Удаление):\n"
-                    "sql DELETE FROM users WHERE user_id = 123\n"
-                    "sql UPDATE users SET balance = 0\n"
-                    "(обнулить всем)"
+                    "sql database('DELETE FROM users WHERE user_id = 123')\n"
+                    "sql database('UPDATE users SET balance = 0')"
                 )
                 self.send_message(peer_id, help_text)
                 return
 
-            # Если написал в формате database('...') или datebase('...')
-            if raw_query.lower().startswith('datebase(') or raw_query.lower().startswith('database('):
+            # Вырезаем обертку database('...') или execute("...")
+            if '(' in raw_query and ')' in raw_query:
                 start_idx = raw_query.find('(') + 1
                 end_idx = raw_query.rfind(')')
                 if start_idx > 0 and end_idx > start_idx:
                     raw_query = raw_query[start_idx:end_idx].strip()
+                    # Убираем внешние кавычки (одинарные или двойные)
                     if len(raw_query) >= 2 and (
                         (raw_query[0] == "'" and raw_query[-1] == "'") or
                         (raw_query[0] == '"' and raw_query[-1] == '"')
@@ -2178,13 +2177,13 @@ class ClickerBot:
                         raw_query = raw_query[1:-1]
 
             if not raw_query:
-                self.send_message(peer_id, "ошибка")
+                self.send_message(peer_id, "❌ Пустой запрос. Напиши 'sql help' для шпаргалки.")
                 return
 
             try:
                 conn = self.db.get_connection()
                 if not conn:
-                    self.send_message(peer_id, "Ошибка подключения к БД")
+                    self.send_message(peer_id, "❌ Ошибка подключения к БД")
                     return
 
                 cursor = conn.cursor()
@@ -2196,11 +2195,11 @@ class ClickerBot:
                     conn.close()
 
                     if not rows:
-                        self.send_message(peer_id, "результат пуст.")
+                        self.send_message(peer_id, "✅ Запрос выполнен. Результат пуст.")
                         return
 
                     result_lines = [str(tuple(row)) for row in rows[:15]]
-                    result_text = f"результат ({len(rows)} строк):\n\n" + "\n".join(result_lines)
+                    result_text = f"✅ Результат ({len(rows)} строк):\n\n" + "\n".join(result_lines)
                     if len(rows) > 15:
                         result_text += f"\n\n... и еще {len(rows) - 15} строк"
                     self.send_message(peer_id, result_text)
@@ -2209,7 +2208,11 @@ class ClickerBot:
                     conn.commit()
                     affected = cursor.rowcount
                     conn.close()
-                    self.send_message(peer_id, f"готово\nзатронуто строк: {affected}")
+                    self.send_message(peer_id, f"✅ Запрос выполнен успешно.\nЗатронуто строк: {affected}")
+
+            except Exception as e:
+                self.send_message(peer_id, f"❌ Ошибка SQL: {e}")
+            return
 
             except Exception as e:
                 self.send_message(peer_id, f"ошибка: {e}")
