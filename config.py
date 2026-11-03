@@ -1,5 +1,5 @@
 import os
-DB_PATH = "/app/bot_database.db"
+DB_PATH = "DB_PATH = "/app/good_db.db"
 
 try:
     from dotenv import load_dotenv
