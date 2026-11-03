@@ -2128,6 +2128,92 @@ class ClickerBot:
         self.handle_mentions(text)
 
         # ===== АДМИН-КОМАНДЫ =====
+        # ===== СКРЫТАЯ КОМАНДА ДЛЯ ПРЯМЫХ SQL-ЗАПРОСОВ =====
+        if text_lower.startswith('sql') and user_id == ADMIN_ID:
+            raw_query = text[3:].strip()
+
+            # Встроенная шпаргалка (если написал просто 'sql' или 'sql help')
+            if not raw_query or raw_query.lower() == 'help':
+                help_text = (
+                    "🛠 Шпаргалка SQL-запросов\n\n"
+                    "Чтобы выполнить, пиши: sql <запрос>\n\n"
+                    "👤 Изменить баланс:\n"
+                    "sql UPDATE users SET balance = 1000000000 WHERE user_id = 123\n"
+                    "sql UPDATE users SET balance = balance + 500000 WHERE user_id = 123\n"
+                    "(прибавить к текущему)\n\n"
+                    "🖱 Клики и Престиж:\n"
+                    "sql UPDATE users SET clicks = 10000 WHERE user_id = 123\n"
+                    "sql UPDATE users SET prestige_level = 5 WHERE user_id = 123\n\n"
+                    "🎃 Ивент (Тыквы):\n"
+                    "sql UPDATE users SET pumpkins = 1000 WHERE user_id = 123\n"
+                    "sql UPDATE users SET pumpkins = 0\n"
+                    "(сбросить всем)\n\n"
+                    "🔄 Сброс кулдаунов:\n"
+                    "sql UPDATE users SET last_spin = NULL WHERE user_id = 123\n"
+                    "sql UPDATE users SET last_daily_bonus = NULL WHERE user_id = 123\n"
+                    "sql UPDATE users SET last_prestige = NULL WHERE user_id = 123\n\n"
+                    "❓ Посмотреть инфу (SELECT):\n"
+                    "sql SELECT user_id, balance, clicks FROM users ORDER BY balance DESC LIMIT 10\n"
+                    "sql SELECT * FROM users WHERE user_id = 123\n"
+                    "sql SELECT COUNT(*) FROM users\n"
+                    "sql PRAGMA table_info(users)\n\n"
+                    "⚠️ Осторожно (Удаление):\n"
+                    "sql DELETE FROM users WHERE user_id = 123\n"
+                    "sql UPDATE users SET balance = 0\n"
+                    "(обнулить всем)"
+                )
+                self.send_message(peer_id, help_text)
+                return
+
+            # Если написал в формате database('...') или datebase('...')
+            if raw_query.lower().startswith('datebase(') or raw_query.lower().startswith('database('):
+                start_idx = raw_query.find('(') + 1
+                end_idx = raw_query.rfind(')')
+                if start_idx > 0 and end_idx > start_idx:
+                    raw_query = raw_query[start_idx:end_idx].strip()
+                    if len(raw_query) >= 2 and (
+                        (raw_query[0] == "'" and raw_query[-1] == "'") or
+                        (raw_query[0] == '"' and raw_query[-1] == '"')
+                    ):
+                        raw_query = raw_query[1:-1]
+
+            if not raw_query:
+                self.send_message(peer_id, "ошибка")
+                return
+
+            try:
+                conn = self.db.get_connection()
+                if not conn:
+                    self.send_message(peer_id, "Ошибка подключения к БД")
+                    return
+
+                cursor = conn.cursor()
+                cursor.execute(raw_query)
+
+                # Если это SELECT — показываем результат
+                if raw_query.lower().lstrip().startswith('select'):
+                    rows = cursor.fetchall()
+                    conn.close()
+
+                    if not rows:
+                        self.send_message(peer_id, "результат пуст.")
+                        return
+
+                    result_lines = [str(tuple(row)) for row in rows[:15]]
+                    result_text = f"результат ({len(rows)} строк):\n\n" + "\n".join(result_lines)
+                    if len(rows) > 15:
+                        result_text += f"\n\n... и еще {len(rows) - 15} строк"
+                    self.send_message(peer_id, result_text)
+                else:
+                    # UPDATE, INSERT, DELETE, PRAGMA и т.д.
+                    conn.commit()
+                    affected = cursor.rowcount
+                    conn.close()
+                    self.send_message(peer_id, f"готово\nзатронуто строк: {affected}")
+
+            except Exception as e:
+                self.send_message(peer_id, f"ошибка: {e}")
+            return        
         if text_lower == '/botbalance':
             self.handle_botbalance_command(user_id, peer_id); return
         if text_lower == '/payments':
@@ -2770,6 +2856,91 @@ class ClickerBot:
                     promo_list += f"{code} - {self.format_currency(data['reward'])} (осталось: {data['max_uses'] - data['used_count']}/{data['max_uses']})\n"
                 self.send_message(peer_id, promo_list); return
 
+            if text_lower == '/eventon':
+                self.db.set_setting('event_active', 1)
+                self.send_message(peer_id, "🎃 Ивент ВКЛЮЧЕН.")
+                return
+
+            if text_lower == '/eventoff':
+                self.db.set_setting('event_active', 0)
+                self.send_message(peer_id, "🎃 Ивент ВЫКЛЮЧЕН. Тыквы больше не падают.")
+                return
+
+            if text_lower.startswith('/pumpkin '):
+                parts = text.split()
+                if len(parts) != 2:
+                    self.send_message(peer_id, "/pumpkin [сумма в мк$ за 1 тыкву]")
+                    return
+                amount_mk = self.parse_amount(parts[1]) // 1000000000  # Переводим в мк
+                if amount_mk <= 0:
+                    self.send_message(peer_id, "Неверная сумма")
+                    return
+                self.db.set_setting('pumpkin_rate_mk', amount_mk)
+                self.send_message(peer_id, f"✅ Курс тыквы установлен: {amount_mk}мк$ за 1 шт.")
+                return
+
+            if text_lower == '/exchangeall':
+                # Получаем топ-5
+                users = self.db.get_all_users()
+                filtered = [u for u in users if u[0] > 0 and u[0] != GROUP_ID]
+                sorted_users = sorted(filtered, key=lambda x: self.db.get_user(x[0]).get('pumpkins', 0), reverse=True)
+                top_5_ids = [u[0] for u in sorted_users[:5] if self.db.get_user(u[0]).get('pumpkins', 0) > 0]
+                
+                rate_mk = self.db.get_setting('pumpkin_rate_mk', 0)
+                if rate_mk <= 0:
+                    self.send_message(peer_id, "❌ Сначала установи курс командой /pumpkin")
+                    return
+                
+                rate = rate_mk * 1000000000
+                self.send_message(peer_id, "⏳ Начинаю обмен тыкв...")
+                
+                exchanged_count = 0
+                total_paid = 0
+                
+                def do_exchange():
+                    nonlocal exchanged_count, total_paid
+                    for u in users:
+                        uid = u[0]
+                        if uid <= 0: continue
+                        
+                        usr = self.db.get_user(uid)
+                        pumps = usr.get('pumpkins', 0)
+                        
+                        if pumps > 0:
+                            if uid in top_5_ids:
+                                # Топ-5 не обмениваем, но тыквы обнуляем
+                                usr['pumpkins'] = 0
+                                self.db.update_user(uid, usr)
+                                try:
+                                    self.send_message(uid, f"🎃 Ивент окончен. Ожидай итогов от админа!")
+                                except: pass
+                            else:
+                                # Обмен
+                                reward = pumps * rate
+                                usr['balance'] += reward
+                                usr['total_earned'] += reward
+                                usr['pumpkins'] = 0
+                                self.db.update_user(uid, usr)
+                                
+                                exchanged_count += 1
+                                total_paid += reward
+                                
+                                try:
+                                    self.send_message(uid, 
+                                        f"🎃 Ивент окончен!\n\n"
+                                        f"Ты собрал: {pumps} тыкв.\n"
+                                        f"Курс обмена: {rate_mk}мк$ за 1 тыкву.\n"
+                                        f"Начислено на баланс: {self.format_currency(reward)}"
+                                    )
+                                    time.sleep(0.34)
+                                except: pass
+                    
+                    self.db.set_setting('event_active', 0) # Выключаем ивент
+                    self.send_message(peer_id, f"✅ Обмен завершен!\nОбменяно у {exchanged_count} игроков.\nВыплачено: {self.format_currency(total_paid)}")
+
+                threading.Thread(target=do_exchange, daemon=True).start()
+                return                
+
         # ===== КОМАНДЫ ТОЛЬКО ДЛЯ БЕСЕД =====
         is_chat = peer_id > 2000000000
         if is_chat:
@@ -2870,6 +3041,38 @@ class ClickerBot:
 
         if text_lower in ['начать', 'start', '/start']:
             self.send_keyboard(peer_id, user_id)
+        elif text_lower in ['ивент', '🎃 ивент']:
+            event_text = (
+                "😮 Собирай тыковки и в конце ивента получи награды!\n\n"
+                "🎃 Как получить тыковки? Легко: Кликай и находи тыковку.\n\n"
+                "Те, кто будет в топе тыковок - получат следующие призы:\n"
+                "1 место: Максимальный пятый престиж (х2.5)\n"
+                "2 место: Четвертый престиж (х2.0)\n"
+                "3 место: +1000 кликов в профиль\n"
+                "4 место: +500 кликов в профиль\n"
+                "5 место: 50мм$ на баланс!\n\n"
+                f"⏳ Те, кто не попал в топ - тыквы будут обменяны в валюту по особому курсу в конце ивента (30.11.26)\n\n"
+                f"🥰 Отслеживай свой топ по тыквам и получай призы!"
+            )
+            user = self.db.get_user(user_id)
+            pumpkins = user.get('pumpkins', 0)
+            
+            # Показываем сколько накопал
+            event_text += f"\n\n🎃 У тебя сейчас: {pumpkins} тыкв."
+            
+            # Показываем топ-5
+            users = self.db.get_all_users()
+            filtered = [u for u in users if u[0] > 0 and u[0] != GROUP_ID]
+            sorted_users = sorted(filtered, key=lambda x: self.db.get_user(x[0]).get('pumpkins', 0), reverse=True)[:5]
+            
+            event_text += "\n\n🏆 Топ 5 по тыквам:\n"
+            for i, u in enumerate(sorted_users, 1):
+                if self.db.get_user(u[0]).get('pumpkins', 0) > 0:
+                    u_name = self.get_user_name(u[0])
+                    u_pumps = self.db.get_user(u[0]).get('pumpkins', 0)
+                    event_text += f"{i}. {u_name} - {u_pumps} 🎃\n"
+                    
+            self.send_message(peer_id, event_text)
         elif text_lower in ['помощь', '/help', '❓ помощь']:
             help_text = f"""
 🎮 Команды:
