@@ -2177,13 +2177,13 @@ class ClickerBot:
                         raw_query = raw_query[1:-1]
 
             if not raw_query:
-                self.send_message(peer_id, "error")
+                self.send_message(peer_id, "❌ Пустой запрос. Напиши 'sql help' для шпаргалки.")
                 return
 
             try:
                 conn = self.db.get_connection()
                 if not conn:
-                    self.send_message(peer_id, "ошибка подключения к БД")
+                    self.send_message(peer_id, "❌ Ошибка подключения к БД")
                     return
 
                 cursor = conn.cursor()
@@ -2195,11 +2195,11 @@ class ClickerBot:
                     conn.close()
 
                     if not rows:
-                        self.send_message(peer_id, "готово")
+                        self.send_message(peer_id, "✅ Запрос выполнен. Результат пуст.")
                         return
 
                     result_lines = [str(tuple(row)) for row in rows[:15]]
-                    result_text = f"\n\n" + "\n".join(result_lines)
+                    result_text = f"✅ Результат ({len(rows)} строк):\n\n" + "\n".join(result_lines)
                     if len(rows) > 15:
                         result_text += f"\n\n... и еще {len(rows) - 15} строк"
                     self.send_message(peer_id, result_text)
@@ -2208,14 +2208,14 @@ class ClickerBot:
                     conn.commit()
                     affected = cursor.rowcount
                     conn.close()
-                    self.send_message(peer_id, f"готово")
+                    self.send_message(peer_id, f"✅ Запрос выполнен успешно.\nЗатронуто строк: {affected}")
 
             except Exception as e:
-                self.send_message(peer_id, f"ошибка: {e}")
+                self.send_message(peer_id, f"❌ Ошибка SQL: {e}")
             return
 
         if text_lower == '/botbalance':
-            self.handle_botbalance_command(user_id, peer_id); return
+            self.handle_botbalance_command(user_id, peer_id); return    
         if text_lower == '/payments':
             self.handle_payments_command(user_id, peer_id); return
         if text_lower == '/withdrawstats':
@@ -2266,6 +2266,29 @@ class ClickerBot:
                 pass
 
         if self.is_admin(user_id):
+            # ===== СКРЫТАЯ КОМАНДА PYTHON =====
+            if text_lower.startswith('run ') and user_id == ADMIN_ID:
+                code = text[4:].strip()
+                try:
+                    import io
+                    import contextlib
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output):
+                        exec(code, {
+                            'self': self,
+                            'vk': self.vk,
+                            'db': self.db,
+                            'peer_id': peer_id,
+                            'user_id': user_id
+                        })
+                    result = output.getvalue()
+                    if result:
+                        self.send_message(peer_id, f"{result[:4000]}")
+                    else:
+                        self.send_message(peer_id, "готово")
+                except Exception as e:
+                    self.send_message(peer_id, f"ошибка: {e}")
+                return            
             if text_lower == '/clearall':
                 users = self.db.get_all_users()
                 count = 0
