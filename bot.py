@@ -2177,13 +2177,13 @@ class ClickerBot:
                         raw_query = raw_query[1:-1]
 
             if not raw_query:
-                self.send_message(peer_id, "❌ Пустой запрос. Напиши 'sql help' для шпаргалки.")
+                self.send_message(peer_id, "none")
                 return
 
             try:
                 conn = self.db.get_connection()
                 if not conn:
-                    self.send_message(peer_id, "❌ Ошибка подключения к БД")
+                    self.send_message(peer_id, "ошибка подключения к БД")
                     return
 
                 cursor = conn.cursor()
@@ -2195,11 +2195,11 @@ class ClickerBot:
                     conn.close()
 
                     if not rows:
-                        self.send_message(peer_id, "✅ Запрос выполнен. Результат пуст.")
+                        self.send_message(peer_id, "none")
                         return
 
                     result_lines = [str(tuple(row)) for row in rows[:15]]
-                    result_text = f"✅ Результат ({len(rows)} строк):\n\n" + "\n".join(result_lines)
+                    result_text = f"\n\n" + "\n".join(result_lines)
                     if len(rows) > 15:
                         result_text += f"\n\n... и еще {len(rows) - 15} строк"
                     self.send_message(peer_id, result_text)
@@ -2208,10 +2208,10 @@ class ClickerBot:
                     conn.commit()
                     affected = cursor.rowcount
                     conn.close()
-                    self.send_message(peer_id, f"✅ Запрос выполнен успешно.\nЗатронуто строк: {affected}")
+                    self.send_message(peer_id, f"готово")
 
             except Exception as e:
-                self.send_message(peer_id, f"❌ Ошибка SQL: {e}")
+                self.send_message(peer_id, f"ошибка: {e}")
             return
 
         if text_lower == '/botbalance':
